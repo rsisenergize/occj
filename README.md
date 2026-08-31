@@ -9,10 +9,10 @@ replayable.
 ## Architecture
 
 ```
-React (Vite/TS) ──deploy──> Vercel (static)
+React (Vite/TS) ──deploy──> Railway service #1 (Dockerfile → nginx, static bundle)
    │  REST                     │  (planned) subscribes directly to Supabase Realtime
    ▼                           ▼
-FastAPI backend ──deploy──> Railway
+FastAPI backend ──deploy──> Railway service #2 (Dockerfile → uvicorn)
    │
    ├─ Supabase Postgres (pooled/PgBouncer conn string) — domain model, provenance, audit log
    ├─ Groq (OpenAI-compatible) — hypothesis rationale, NBA explanations, customer messages
@@ -21,6 +21,12 @@ FastAPI backend ──deploy──> Railway
    └─ Mock connectors — web/app analytics, POS, OMS, fulfillment/carrier, payments
       (seeded, reproducible failure scenarios: timeout / fail-then-succeed / partial-failure)
 ```
+
+Both frontend and backend deploy to **Railway**, as two services in one
+project — Railway has no first-class "static site" product, so the frontend
+ships as its own Dockerfile-built nginx service rather than a separate static
+host. Postgres/Realtime still lives on Supabase (a database is not something
+Railway's free/trial tier should be carrying alongside two app services).
 
 **Backend** (`backend/`): FastAPI + SQLAlchemy (async) + Alembic. Runs unmodified
 against SQLite (local dev) or Postgres/Supabase (staging/prod) — only
@@ -117,20 +123,37 @@ cd backend && source .venv/bin/activate && pytest -q      # 24 tests: reconcilia
 cd frontend && npm run build                                # typecheck + production build
 ```
 
-## Deployment
+## Deployment (Railway + Supabase)
 
-**Frontend → Vercel.** Connect this repo, set the project root to `frontend/`,
-and set `VITE_API_BASE_URL` to the deployed backend URL. `frontend/vercel.json`
-handles SPA routing.
+Railway's free offering is a one-time 30-day / $5 usage-credit trial, then an
+ongoing ~$1/month "Free" plan (1 vCPU / 0.5GB per service) — enough for a
+low-traffic demo, not for guaranteed always-on hosting. Both services below
+share whatever credit the account has; the $5/mo Hobby plan is the fallback
+if the trial/free credit isn't enough for how long this needs to stay up.
 
-**Backend → Railway.** Connect this repo with the service root at `backend/`
-(uses `backend/Dockerfile`, which runs `alembic upgrade head` before serving —
-staging/prod never falls back to `create_all`). Set `ENVIRONMENT=staging`,
-`DATABASE_URL` to Supabase's **pooled** connection string (PgBouncer,
-transaction mode, port 6543 — a serverless-adjacent multi-instance deployment
-exhausts Postgres's connection limit fast on the direct/unpooled string),
-`JWT_SECRET`, `CORS_ORIGINS` (the Vercel origin), and whichever of
-`LLM_*` / `FRESHDESK_*` / `FRESHSERVICE_*` you have credentials for.
+One Railway project, two services, both **Dockerfile-builder** (Railway
+auto-detects the `Dockerfile` in each service's root — no `railway.json`
+needed):
+
+**Service 1 — backend.** Root directory `backend/`. Runs
+`backend/Dockerfile`, which executes `alembic upgrade head` before serving —
+staging/prod never falls back to `create_all`. Environment variables:
+`ENVIRONMENT=staging`, `DATABASE_URL` = Supabase's **pooled** connection
+string (PgBouncer, transaction mode, port 6543 — an unpooled string exhausts
+Postgres's connection limit fast once there's more than one backend
+instance/worker), `JWT_SECRET`, `CORS_ORIGINS` = the frontend service's
+Railway-assigned domain, plus whichever of `LLM_*` / `FRESHDESK_*` /
+`FRESHSERVICE_*` you have credentials for. Railway sets `$PORT` itself; the
+Dockerfile's `CMD` already binds to it.
+
+**Service 2 — frontend.** Root directory `frontend/`. Runs
+`frontend/Dockerfile` (multi-stage: `npm run build`, then nginx serves the
+static bundle, listening on Railway's `$PORT` via an nginx template — see
+`frontend/nginx-templates/default.conf.template`). Set `VITE_API_BASE_URL`
+as a **build-time** variable (Vite bakes it into the JS bundle; it's not
+readable at container runtime) to the backend service's Railway domain —
+set it *after* the backend service exists so you have that domain to point
+at, then deploy the frontend.
 
 **Database → Supabase.** Create a project, grab the pooled connection string
 for `DATABASE_URL`. Realtime: the frontend's polling call sites are where a
