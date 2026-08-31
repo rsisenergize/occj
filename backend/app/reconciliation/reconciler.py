@@ -15,9 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.service import record as record_audit
 from app.config import get_settings
 from app.db import ensure_aware, utcnow
+from app.engine.stage import advance_stage
 from app.models.canonical import CanonicalEvent, UncertaintyFlag
 from app.models.case import Case, Customer
-from app.models.enums import ActorType, SourceType, UncertaintyFlagType
+from app.models.enums import ActorType, JourneyStage, SourceType, UncertaintyFlagType
 from app.models.evidence import EvidenceRecord
 from app.reconciliation.rules import (
     DISPUTE_DISPOSITIONS,
@@ -363,6 +364,8 @@ async def reconcile_case(session: AsyncSession, case: Case) -> tuple[list[Canoni
     ingestion that's linked to this case, and by the periodic sweep."""
     timeline = await assemble_timeline(session, case)
     flags = await detect_uncertainty(session, case)
+    if timeline:
+        advance_stage(case, JourneyStage.JOURNEY_ASSEMBLED)
     case.last_activity_at = utcnow()
     await session.flush()
     return timeline, flags

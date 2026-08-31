@@ -21,17 +21,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.service import record as record_audit
 from app.config import get_settings
 from app.db import utcnow
+from app.engine.customer_messaging import draft_customer_message
 from app.engine.impact_engine import assess_impact
 from app.engine.recovery_catalog import rank_recovery_options
+from app.engine.stage import advance_stage
 from app.models.action import ActionRequest, Approval
 from app.models.canonical import UncertaintyFlag
-from app.models.case import Case
+from app.models.case import Case, Customer
 from app.models.enums import (
     ActionStatus,
     ActionType,
     ActorType,
     ApprovalStatus,
+    CaseStatus,
     HypothesisStatus,
+    JourneyStage,
     SourceType,
     UncertaintyFlagType,
 )
@@ -99,7 +103,14 @@ async def _propose(
     requires_approval: bool,
     idempotency_discriminator: str,
     approval_role: str | None = None,
+    case_status: CaseStatus | None = None,
+    stage: JourneyStage | None = None,
 ) -> ActionRequest:
+    if case_status is not None:
+        case.status = case_status
+    if stage is not None:
+        advance_stage(case, stage)
+
     key = _idempotency_key(case.id, action_type, idempotency_discriminator)
     existing = await session.scalar(select(ActionRequest).where(ActionRequest.idempotency_key == key))
     if existing is not None:
@@ -178,6 +189,7 @@ async def decide_next_action(session: AsyncSession, case: Case) -> ActionRequest
             expected_value=0.1,
             requires_approval=False,
             idempotency_discriminator="generic",
+            case_status=CaseStatus.PENDING_EVIDENCE,
         )
 
     # 2. Confidence too low and there's a specific gap to close -- targeted evidence request.
@@ -198,6 +210,8 @@ async def decide_next_action(session: AsyncSession, case: Case) -> ActionRequest
             expected_value=round((CONFIDENCE_ACTION_THRESHOLD - hypothesis.confidence) * 10, 2),
             requires_approval=False,
             idempotency_discriminator=flag.id,
+            case_status=CaseStatus.PENDING_EVIDENCE,
+            stage=JourneyStage.EVIDENCE_CHECKED,
         )
 
     # 3. Confidence sufficient -- assess impact if not already done for this hypothesis.
@@ -219,11 +233,13 @@ async def decide_next_action(session: AsyncSession, case: Case) -> ActionRequest
             expected_value=hypothesis.confidence,
             requires_approval=False,
             idempotency_discriminator=hypothesis.id,
+            case_status=CaseStatus.INVESTIGATING,
         )
         # Pure internal computation, no external side effects or retries
         # needed -- run it inline rather than round-tripping through the
         # tool-execution layer built for connectors with real failure modes.
         impact = await assess_impact(session, case, hypothesis)
+        advance_stage(case, JourneyStage.IMPACT_ASSESSED)
         action.status = ActionStatus.SUCCEEDED
         action.decided_at = utcnow()
         await session.flush()
@@ -252,6 +268,7 @@ async def decide_next_action(session: AsyncSession, case: Case) -> ActionRequest
             expected_value=impact.composite_score * 0.5,
             requires_approval=False,
             idempotency_discriminator=hypothesis.id,
+            case_status=CaseStatus.INVESTIGATING,
         )
 
     # 5. Recovery: propose the best-ranked option not yet rejected.
@@ -295,28 +312,37 @@ async def decide_next_action(session: AsyncSession, case: Case) -> ActionRequest
             requires_approval=chosen.requires_approval,
             approval_role=chosen.approval_role,
             idempotency_discriminator=f"{hypothesis.id}:{chosen.code}",
+            case_status=CaseStatus.PENDING_APPROVAL if chosen.requires_approval else CaseStatus.ACTION_IN_PROGRESS,
+            stage=JourneyStage.RECOVERY_OPTIONS_RANKED,
         )
 
-    # 6. Recovery executed -- notify the customer, once.
+    # 6. Recovery executed -- draft (LLM, template fallback) and send the customer a status update, once.
+    # The draft is built ONLY from this already-succeeded action's own
+    # target/label/cost -- see app/engine/customer_messaging.py -- so it can
+    # never reference a pending or hypothetical action.
     recovery_done = next((a for a in recovery_actions if a.status == ActionStatus.SUCCEEDED), None)
     notify_actions = await _actions_of_type(session, case, ActionType.NOTIFY_CUSTOMER)
     if recovery_done and not notify_actions:
+        customer = await session.get(Customer, case.customer_id)
+        message = await draft_customer_message(customer, recovery_done)
         return await _propose(
             session,
             case,
             action_type=ActionType.NOTIFY_CUSTOMER,
-            target={"recovery_action_id": recovery_done.id},
-            rationale="Recovery action succeeded -- drafting and sending the customer a status update.",
+            target={"recovery_action_id": recovery_done.id, "message": message},
+            rationale="Recovery action succeeded -- sending the customer a status update confirming exactly what was done.",
             expected_value=impact.composite_score * 0.3,
             requires_approval=False,
             idempotency_discriminator=recovery_done.id,
+            case_status=CaseStatus.PENDING_CUSTOMER_UPDATE,
         )
 
-    # 7. Customer notified -- close the case.
+    # 7. Customer notified -- close the case. Pure internal state transition
+    # (like impact assessment), handled inline rather than via a connector.
     notify_done = next((a for a in notify_actions if a.status == ActionStatus.SUCCEEDED), None)
     close_actions = await _actions_of_type(session, case, ActionType.CLOSE_CASE)
     if notify_done and not close_actions:
-        return await _propose(
+        action = await _propose(
             session,
             case,
             action_type=ActionType.CLOSE_CASE,
@@ -326,5 +352,28 @@ async def decide_next_action(session: AsyncSession, case: Case) -> ActionRequest
             requires_approval=False,
             idempotency_discriminator=hypothesis.id,
         )
+        if action.status != ActionStatus.SUCCEEDED:
+            case.status = CaseStatus.CLOSED
+            case.closed_at = utcnow()
+            case.closure_summary = (
+                f"Resolved as '{hypothesis.category}' (confidence {hypothesis.confidence:.0%}). "
+                f"Recovery: {recovery_done.target.get('label')} "
+                f"(${recovery_done.target.get('estimated_cost_usd', 0):.2f}). Customer notified."
+            )
+            advance_stage(case, JourneyStage.OUTCOME_RETAINED)
+            action.status = ActionStatus.SUCCEEDED
+            action.decided_at = utcnow()
+            await record_audit(
+                session,
+                case_id=case.id,
+                entity_type="case",
+                entity_id=case.id,
+                event="closed",
+                actor_type=ActorType.SYSTEM,
+                actor_id="nba_engine",
+                payload={"closure_summary": case.closure_summary},
+            )
+            await session.flush()
+        return action
 
     return None

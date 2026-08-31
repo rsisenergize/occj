@@ -22,10 +22,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.service import record as record_audit
 from app.config import get_settings
 from app.db import utcnow
+from app.engine.stage import advance_stage
 from app.llm.client import LLMUnavailable, chat_json
 from app.models.canonical import UncertaintyFlag
 from app.models.case import Case
-from app.models.enums import ActorType, HypothesisStatus, SourceType, UncertaintyFlagType, EvidenceRelation
+from app.models.enums import (
+    ActorType,
+    EvidenceRelation,
+    HypothesisStatus,
+    JourneyStage,
+    SourceType,
+    UncertaintyFlagType,
+)
 from app.models.evidence import EvidenceRecord
 from app.models.hypothesis import EvidenceLink, Hypothesis
 
@@ -287,10 +295,15 @@ async def generate_or_update_hypotheses(session: AsyncSession, case: Case) -> li
     created.sort(key=lambda h: h.confidence, reverse=True)
     top = created[0]
     case.primary_hypothesis_id = top.id
+    advance_stage(case, JourneyStage.FAILURE_LOCATED)
 
     delta = abs(top.confidence - previous_top_confidence)
     if previous_active and delta > settings.reevaluation_confidence_delta:
         case.needs_reevaluation = True
+        # A material change deserves a real re-look, not a stage display
+        # stuck wherever it happened to be -- jump the case display back to
+        # FAILURE_LOCATED even though stage otherwise only moves forward.
+        case.stage = JourneyStage.FAILURE_LOCATED
         await record_audit(
             session,
             case_id=case.id,
