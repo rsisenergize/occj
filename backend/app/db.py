@@ -33,6 +33,15 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def ensure_aware(dt: datetime) -> datetime:
+    """SQLite drops tzinfo on round-trip (no native tz-aware type), so a
+    datetime read back from the dev DB comes back naive while Postgres/
+    Supabase preserves it. Every comparison in engine code should go through
+    this so the same logic is correct on both backends -- naive values are
+    assumed UTC, which is the only convention this codebase ever writes."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
 async def init_db() -> None:
     """Create tables directly for dev/demo use.
 
