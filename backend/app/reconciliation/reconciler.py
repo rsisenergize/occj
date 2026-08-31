@@ -251,36 +251,52 @@ async def detect_uncertainty(session: AsyncSession, case: Case) -> list[Uncertai
         by_source.setdefault(rec.source_type, []).append(rec)
 
     # --- Duplicate business events (e.g. two payment captures for one order) ---
+    # Scoped per order_id: two captured payments for *different* orders are
+    # two legitimate purchases, not a duplicate charge.
     payments = by_source.get(SourceType.PAYMENT, [])
-    captured = [p for p in payments if (p.payload or {}).get("status") == "captured"]
-    if len(captured) > 1:
-        add_flag(
-            UncertaintyFlagType.DUPLICATE,
-            [p.id for p in captured],
-            f"{len(captured)} captured payments recorded for this journey -- possible duplicate charge.",
-        )
+    captured_by_order: dict[str | None, list[EvidenceRecord]] = {}
+    for p in payments:
+        if (p.payload or {}).get("status") == "captured":
+            captured_by_order.setdefault(p.order_id, []).append(p)
+    for order_id, captured in captured_by_order.items():
+        if len(captured) > 1:
+            add_flag(
+                UncertaintyFlagType.DUPLICATE,
+                [p.id for p in captured],
+                f"{len(captured)} captured payments recorded for order {order_id} -- possible duplicate charge.",
+            )
 
-    # --- Contradictory fulfillment terminal statuses ---
+    # --- Contradictory fulfillment terminal statuses (scoped per order_id --
+    # different orders legitimately having different outcomes is not a
+    # contradiction) ---
     fulfillments = by_source.get(SourceType.FULFILLMENT_UPDATE, [])
-    terminal = [f for f in fulfillments if (f.payload or {}).get("status") in FULFILLMENT_TERMINAL_STATUSES]
-    distinct_terminal_statuses = {(f.payload or {}).get("status") for f in terminal}
-    if len(distinct_terminal_statuses) > 1:
-        add_flag(
-            UncertaintyFlagType.CONTRADICTORY,
-            [f.id for f in terminal],
-            f"Conflicting fulfillment outcomes recorded: {sorted(distinct_terminal_statuses)}.",
-        )
+    fulfillments_by_order: dict[str | None, list[EvidenceRecord]] = {}
+    for f in fulfillments:
+        fulfillments_by_order.setdefault(f.order_id, []).append(f)
+    for order_id, order_fulfillments in fulfillments_by_order.items():
+        terminal = [f for f in order_fulfillments if (f.payload or {}).get("status") in FULFILLMENT_TERMINAL_STATUSES]
+        distinct_terminal_statuses = {(f.payload or {}).get("status") for f in terminal}
+        if len(distinct_terminal_statuses) > 1:
+            add_flag(
+                UncertaintyFlagType.CONTRADICTORY,
+                [f.id for f in terminal],
+                f"Conflicting fulfillment outcomes recorded for order {order_id}: {sorted(distinct_terminal_statuses)}.",
+            )
 
-    # --- Contact-centre dispute contradicting a "delivered" fulfillment record ---
+    # --- Contact-centre dispute contradicting a "delivered" fulfillment record (same order) ---
     contacts = by_source.get(SourceType.CONTACT_CENTER_RECORD, [])
-    disputes = [c for c in contacts if (c.payload or {}).get("disposition") in DISPUTE_DISPOSITIONS]
-    delivered = [f for f in fulfillments if (f.payload or {}).get("status") == "delivered"]
-    if disputes and delivered:
-        add_flag(
-            UncertaintyFlagType.CONTRADICTORY,
-            [d.id for d in disputes] + [f.id for f in delivered],
-            "Customer disputes receipt but fulfillment records show delivered.",
-        )
+    disputes_by_order: dict[str | None, list[EvidenceRecord]] = {}
+    for c in contacts:
+        if (c.payload or {}).get("disposition") in DISPUTE_DISPOSITIONS:
+            disputes_by_order.setdefault(c.order_id, []).append(c)
+    for order_id, disputes in disputes_by_order.items():
+        delivered = [f for f in fulfillments_by_order.get(order_id, []) if (f.payload or {}).get("status") == "delivered"]
+        if disputes and delivered:
+            add_flag(
+                UncertaintyFlagType.CONTRADICTORY,
+                [d.id for d in disputes] + [f.id for f in delivered],
+                f"Customer disputes receipt of order {order_id} but fulfillment records show delivered.",
+            )
 
     # --- Missing expected follow-up evidence ---
     for rec in evidence:

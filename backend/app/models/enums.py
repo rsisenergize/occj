@@ -83,9 +83,13 @@ class EvidenceRelation(StrEnum):
 
 
 class ActionType(StrEnum):
+    """What the action DOES when executed. "Proposed" vs "approved" vs
+    "executing" is ActionStatus, not a separate type -- a recovery action is
+    always EXECUTE_RECOVERY, just starting from status=PROPOSED or
+    PENDING_APPROVAL depending on whether it clears the approval threshold."""
+
     REQUEST_EVIDENCE = "request_evidence"
     RUN_ANALYSIS = "run_analysis"
-    PROPOSE_RECOVERY = "propose_recovery"
     EXECUTE_RECOVERY = "execute_recovery"
     ESCALATE_ITSM = "escalate_itsm"
     NOTIFY_CUSTOMER = "notify_customer"
