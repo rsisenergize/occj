@@ -1,0 +1,14 @@
+server {
+    # Railway assigns the port to listen on via $PORT at runtime; the
+    # official nginx:alpine image envsubst's *.template files in
+    # /etc/nginx/templates into /etc/nginx/conf.d on container start, so
+    # this doesn't need any custom entrypoint.
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri /index.html;
+    }
+}
