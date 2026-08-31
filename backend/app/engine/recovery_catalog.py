@@ -144,7 +144,11 @@ def rank_recovery_options(category: str, financial_exposure_usd: float, tier: st
     )
     options.append(exceptional)
 
-    # Cheapest, no-approval-needed substantive remedies first; exceptional
-    # remedies (which need a human regardless of cost) sort last.
-    options.sort(key=lambda o: (o.is_exceptional, o.requires_approval, o.estimated_cost_usd))
+    # Deliberately NOT sorted by cost/requires_approval: that would prefer
+    # whichever remedy dodges the approval gate, which is backwards -- the
+    # gate exists precisely so a high-value or inadequate remedy gets human
+    # review, not so the engine can route around it by picking something
+    # cheaper. Category order above is authored as primary-remedy-first;
+    # only the always-available apology is pinned first and the
+    # (always-approval-gated regardless of cost) exceptional option last.
     return options

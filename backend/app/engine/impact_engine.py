@@ -31,13 +31,38 @@ async def _hypothesis_evidence(session: AsyncSession, hypothesis: Hypothesis) ->
     return records
 
 
+async def _order_evidence(session: AsyncSession, customer_id: str, order_ids: set[str]) -> list[EvidenceRecord]:
+    """The hypothesis's own cited evidence is often a fulfillment/contact
+    record with no dollar figure on it at all (e.g. "delivered" vs. "item
+    not received") -- the actual amount at risk lives on that order's
+    ORDER/PAYMENT/RETURN/STORE_TRANSACTION records. Pull those in too so
+    exposure reflects the real transaction value, not just whatever
+    happened to be cited."""
+    order_ids = {o for o in order_ids if o}
+    if not order_ids:
+        return []
+    return list(
+        await session.scalars(
+            select(EvidenceRecord).where(
+                EvidenceRecord.customer_id == customer_id,
+                EvidenceRecord.order_id.in_(order_ids),
+                EvidenceRecord.is_superseded.is_(False),
+            )
+        )
+    )
+
+
 async def assess_impact(session: AsyncSession, case: Case, hypothesis: Hypothesis) -> ImpactAssessment:
-    evidence = await _hypothesis_evidence(session, hypothesis)
+    cited_evidence = await _hypothesis_evidence(session, hypothesis)
+    order_ids = {rec.order_id for rec in cited_evidence} | ({case.order_id} if case.order_id else set())
+    order_evidence = await _order_evidence(session, case.customer_id, order_ids)
+    evidence = {rec.id: rec for rec in cited_evidence + order_evidence}.values()
 
     # Financial exposure: the largest dollar figure implicated by the cited
-    # evidence (a duplicate charge's extra amount, an at-risk order/refund
-    # amount, ...). Simple and explainable rather than a fragile sum that
-    # could double-count the same order from multiple angles.
+    # evidence AND the order(s) it concerns (a duplicate charge's extra
+    # amount, an at-risk order/refund amount, ...). Simple and explainable
+    # rather than a fragile sum that could double-count the same order from
+    # multiple angles.
     amounts = [float(rec.payload.get("amount", 0) or 0) for rec in evidence if isinstance(rec.payload, dict)]
     financial_exposure = max(amounts) if amounts else 0.0
 

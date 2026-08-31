@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     app_name: str = "Omnichannel Customer Journey Investigation & Recovery Agent"
     environment: Literal["dev", "staging", "prod"] = "dev"
     log_level: str = "INFO"
+    # Comma-separated allowed frontend origins in staging/prod, e.g.
+    # "https://occj.vercel.app,https://occj-git-main-yourteam.vercel.app".
+    # Dev ignores this and allows everything.
+    cors_origins: str = ""
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     # --- Persistence ---
     # Default: local SQLite file, zero setup, for local dev/tests. In staging/prod
