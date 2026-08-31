@@ -137,6 +137,7 @@ class ActionRequestOut(ORMModel):
 class ApprovalOut(ORMModel):
     id: str
     action_request_id: str
+    case_id: str | None = None
     required_role: str
     status: str
     decided_by_user_id: str | None
@@ -170,3 +171,4 @@ class CaseDetailOut(BaseModel):
     hypotheses: list[HypothesisOut]
     latest_impact: ImpactAssessmentOut | None
     actions: list[ActionRequestOut]
+    approvals: list[ApprovalOut]

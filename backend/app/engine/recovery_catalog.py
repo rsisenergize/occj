@@ -27,7 +27,7 @@ _CATEGORY_OPTIONS: dict[str, list] = {
     "duplicate_charge": [
         lambda exposure, tier: RecoveryOption(
             "reverse_duplicate_charge",
-            f"Reverse duplicate charge (${exposure:.2f})",
+            "Reverse the duplicate charge",
             exposure,
             exposure >= settings.high_value_approval_threshold_usd,
             "finance_approver",
@@ -45,7 +45,7 @@ _CATEGORY_OPTIONS: dict[str, list] = {
         ),
         lambda exposure, tier: RecoveryOption(
             "full_refund",
-            f"Full refund (${exposure:.2f})",
+            "Full refund",
             exposure,
             exposure >= settings.high_value_approval_threshold_usd,
             "finance_approver",
@@ -73,7 +73,7 @@ _CATEGORY_OPTIONS: dict[str, list] = {
     "return_received_refund_not_issued": [
         lambda exposure, tier: RecoveryOption(
             "issue_outstanding_refund",
-            f"Issue outstanding refund (${exposure:.2f})",
+            "Issue the outstanding refund",
             exposure,
             exposure >= settings.high_value_approval_threshold_usd,
             "finance_approver",
@@ -101,7 +101,7 @@ _CATEGORY_OPTIONS: dict[str, list] = {
         ),
         lambda exposure, tier: RecoveryOption(
             "full_refund",
-            f"Full refund (${exposure:.2f})",
+            "Full refund",
             exposure,
             exposure >= settings.high_value_approval_threshold_usd,
             "finance_approver",

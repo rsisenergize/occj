@@ -17,15 +17,25 @@ _STALLING_STATUSES = {ActionStatus.PENDING_APPROVAL, ActionStatus.NEEDS_MANUAL_R
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 
+def _with_case_id(approval: Approval, case_id: str | None) -> ApprovalOut:
+    return ApprovalOut.model_validate(approval).model_copy(update={"case_id": case_id})
+
+
 @router.get("", response_model=list[ApprovalOut])
 async def list_approvals(
     session: AsyncSession = Depends(get_session), user: User = Depends(get_current_user)
-) -> list[Approval]:
+) -> list[ApprovalOut]:
     """Pending approvals routed to the current user's role (admins see all)."""
-    query = select(Approval).where(Approval.status == ApprovalStatus.PENDING).order_by(Approval.created_at)
+    query = (
+        select(Approval, ActionRequest.case_id)
+        .join(ActionRequest, Approval.action_request_id == ActionRequest.id)
+        .where(Approval.status == ApprovalStatus.PENDING)
+        .order_by(Approval.created_at)
+    )
     if user.role != UserRole.ADMIN:
         query = query.where(Approval.required_role == user.role.value)
-    return list(await session.scalars(query))
+    rows = (await session.execute(query)).all()
+    return [_with_case_id(approval, case_id) for approval, case_id in rows]
 
 
 @router.post("/{approval_id}/decide", response_model=ApprovalOut)
@@ -34,7 +44,7 @@ async def decide(
     body: ApprovalDecision,
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
-) -> Approval:
+) -> ApprovalOut:
     approval = await session.get(Approval, approval_id)
     if approval is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Approval not found")
@@ -46,8 +56,10 @@ async def decide(
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from exc
     await session.commit()
 
-    if decision == ApprovalStatus.APPROVED:
-        action = await session.get(ActionRequest, approval.action_request_id)
+    action = await session.get(ActionRequest, approval.action_request_id)
+    case_id = action.case_id if action else None
+
+    if decision == ApprovalStatus.APPROVED and action is not None:
         case = await session.get(Case, action.case_id)
         # Execute the now-approved action, then keep driving the pipeline
         # (notify customer, close case, ...) until it stalls on its own.
@@ -58,4 +70,4 @@ async def decide(
         await session.commit()
 
     await session.refresh(approval)
-    return approval
+    return _with_case_id(approval, case_id)

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.deps import get_current_user, require_roles
 from app.db import get_session
 from app.engine.case_service import create_case, get_or_create_customer, run_case_cycle
-from app.models.action import ActionRequest
+from app.models.action import ActionRequest, Approval
 from app.models.auth import User
 from app.models.canonical import CanonicalEvent, UncertaintyFlag
 from app.models.case import Case, Customer
@@ -14,6 +14,7 @@ from app.models.hypothesis import EvidenceLink, Hypothesis
 from app.models.impact import ImpactAssessment
 from app.schemas.common import (
     ActionRequestOut,
+    ApprovalOut,
     CaseCreate,
     CaseDetailOut,
     CaseOut,
@@ -128,6 +129,14 @@ async def get_case(
             select(ActionRequest).where(ActionRequest.case_id == case.id).order_by(ActionRequest.created_at)
         )
     )
+    approvals = list(
+        await session.scalars(
+            select(Approval)
+            .join(ActionRequest, Approval.action_request_id == ActionRequest.id)
+            .where(ActionRequest.case_id == case.id)
+            .order_by(Approval.created_at)
+        )
+    )
 
     return CaseDetailOut(
         case=CaseOut.model_validate(case),
@@ -137,6 +146,9 @@ async def get_case(
         hypotheses=hyp_outs,
         latest_impact=ImpactAssessmentOut.model_validate(latest_impact) if latest_impact else None,
         actions=[ActionRequestOut.model_validate(a) for a in actions],
+        approvals=[
+            ApprovalOut.model_validate(a).model_copy(update={"case_id": case.id}) for a in approvals
+        ],
     )
 
 
