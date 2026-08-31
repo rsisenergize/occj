@@ -59,7 +59,6 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['customer_id'], ['customers.id'], ),
     sa.ForeignKeyConstraint(['opened_by_user_id'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['primary_hypothesis_id'], ['hypotheses.id'], use_alter=True),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_cases_customer_id'), 'cases', ['customer_id'], unique=False)
@@ -157,6 +156,22 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_hypotheses_case_id'), 'hypotheses', ['case_id'], unique=False)
+    # cases.primary_hypothesis_id -> hypotheses.id is a genuine circular
+    # dependency (hypotheses.case_id -> cases.id, the reverse direction) --
+    # deferred to here, after hypotheses exists, rather than inlined on the
+    # cases table above. use_alter=True on the ORM FK only helps
+    # MetaData.create_all() resolve this automatically (the dev/SQLite
+    # path); Alembic's op.create_table does not split circular FKs on its
+    # own, so this has to be explicit or `alembic upgrade head` fails
+    # against a real database with "relation hypotheses does not exist".
+    # batch_alter_table (not a plain op.create_foreign_key) because SQLite
+    # has no ALTER-ADD-CONSTRAINT support at all -- batch mode does the
+    # copy-and-move dance on SQLite and a normal ALTER TABLE on Postgres,
+    # so the same migration works against both.
+    with op.batch_alter_table('cases') as batch_op:
+        batch_op.create_foreign_key(
+            'fk_cases_primary_hypothesis_id_hypotheses', 'hypotheses', ['primary_hypothesis_id'], ['id']
+        )
     op.create_table('uncertainty_flags',
     sa.Column('case_id', sa.String(), nullable=False),
     sa.Column('flag_type', sa.Enum('missing', 'stale', 'duplicate', 'contradictory', name='uncertaintyflagtype', native_enum=False, length=64), nullable=False),
@@ -249,6 +264,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_uncertainty_flags_flag_type'), table_name='uncertainty_flags')
     op.drop_index(op.f('ix_uncertainty_flags_case_id'), table_name='uncertainty_flags')
     op.drop_table('uncertainty_flags')
+    with op.batch_alter_table('cases') as batch_op:
+        batch_op.drop_constraint('fk_cases_primary_hypothesis_id_hypotheses', type_='foreignkey')
     op.drop_index(op.f('ix_hypotheses_case_id'), table_name='hypotheses')
     op.drop_table('hypotheses')
     op.drop_index(op.f('ix_canonical_events_effective_at'), table_name='canonical_events')
