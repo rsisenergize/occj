@@ -137,7 +137,7 @@ async def execute_action(session: AsyncSession, action: ActionRequest) -> Action
         action.status = ActionStatus.NEEDS_MANUAL_REVIEW if result.needs_manual_review else ActionStatus.SUCCEEDED
         stage = _STAGE_ON_SUCCESS.get(action.action_type)
         if stage is not None and context.get("case") is not None:
-            advance_stage(context["case"], stage)
+            await advance_stage(session, context["case"], stage)
     else:
         action.status = ActionStatus.FAILED
 

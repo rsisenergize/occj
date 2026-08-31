@@ -295,7 +295,7 @@ async def generate_or_update_hypotheses(session: AsyncSession, case: Case) -> li
     created.sort(key=lambda h: h.confidence, reverse=True)
     top = created[0]
     case.primary_hypothesis_id = top.id
-    advance_stage(case, JourneyStage.FAILURE_LOCATED)
+    await advance_stage(session, case, JourneyStage.FAILURE_LOCATED)
 
     delta = abs(top.confidence - previous_top_confidence)
     if previous_active and delta > settings.reevaluation_confidence_delta:

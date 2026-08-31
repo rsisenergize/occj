@@ -365,7 +365,7 @@ async def reconcile_case(session: AsyncSession, case: Case) -> tuple[list[Canoni
     timeline = await assemble_timeline(session, case)
     flags = await detect_uncertainty(session, case)
     if timeline:
-        advance_stage(case, JourneyStage.JOURNEY_ASSEMBLED)
+        await advance_stage(session, case, JourneyStage.JOURNEY_ASSEMBLED)
     case.last_activity_at = utcnow()
     await session.flush()
     return timeline, flags

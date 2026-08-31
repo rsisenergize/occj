@@ -109,7 +109,7 @@ async def _propose(
     if case_status is not None:
         case.status = case_status
     if stage is not None:
-        advance_stage(case, stage)
+        await advance_stage(session, case, stage)
 
     key = _idempotency_key(case.id, action_type, idempotency_discriminator)
     existing = await session.scalar(select(ActionRequest).where(ActionRequest.idempotency_key == key))
@@ -239,7 +239,7 @@ async def decide_next_action(session: AsyncSession, case: Case) -> ActionRequest
         # needed -- run it inline rather than round-tripping through the
         # tool-execution layer built for connectors with real failure modes.
         impact = await assess_impact(session, case, hypothesis)
-        advance_stage(case, JourneyStage.IMPACT_ASSESSED)
+        await advance_stage(session, case, JourneyStage.IMPACT_ASSESSED)
         action.status = ActionStatus.SUCCEEDED
         action.decided_at = utcnow()
         await session.flush()
@@ -360,7 +360,7 @@ async def decide_next_action(session: AsyncSession, case: Case) -> ActionRequest
                 f"Recovery: {recovery_done.target.get('label')} "
                 f"(${recovery_done.target.get('estimated_cost_usd', 0):.2f}). Customer notified."
             )
-            advance_stage(case, JourneyStage.OUTCOME_RETAINED)
+            await advance_stage(session, case, JourneyStage.OUTCOME_RETAINED)
             action.status = ActionStatus.SUCCEEDED
             action.decided_at = utcnow()
             await record_audit(
