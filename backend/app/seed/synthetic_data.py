@@ -5,7 +5,7 @@ case states (some fully closed, some deliberately left mid-pipeline so the
 seeded workspace has live approval-queue and pending-evidence work to look
 at, not just a pile of finished cases).
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,7 @@ from app.models.action import ActionRequest, Approval
 from app.models.enums import ActionStatus, ApprovalStatus, CaseTriggerType, SourceType
 from app.reconciliation.reconciler import ingest_evidence
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 def _ago(**kwargs) -> datetime:

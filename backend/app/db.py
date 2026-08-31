@@ -1,6 +1,6 @@
 """Async SQLAlchemy engine/session, portable between SQLite (dev) and Postgres (prod)."""
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -30,7 +30,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def ensure_aware(dt: datetime) -> datetime:
@@ -39,7 +39,7 @@ def ensure_aware(dt: datetime) -> datetime:
     Supabase preserves it. Every comparison in engine code should go through
     this so the same logic is correct on both backends -- naive values are
     assumed UTC, which is the only convention this codebase ever writes."""
-    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 async def init_db() -> None:

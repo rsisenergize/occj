@@ -15,10 +15,10 @@ from app.models.impact import ImpactAssessment
 from app.schemas.common import (
     ActionRequestOut,
     ApprovalOut,
+    CanonicalEventOut,
     CaseCreate,
     CaseDetailOut,
     CaseOut,
-    CanonicalEventOut,
     CustomerOut,
     EvidenceLinkOut,
     HypothesisOut,

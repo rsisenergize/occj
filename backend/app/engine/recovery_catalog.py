@@ -2,7 +2,7 @@
 purpose: which remedies apply to which hypothesis category, their estimated
 cost, and whether that cost clears the approval threshold -- all of this
 needs to be explainable to a reviewer, so none of it is LLM-generated."""
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from app.config import get_settings
 

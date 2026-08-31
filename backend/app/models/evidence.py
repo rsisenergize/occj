@@ -3,9 +3,9 @@ from datetime import datetime
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.db import Base
 from app.models.enums import ActorType, SourceType
 from app.models.mixins import IdMixin, TimestampMixin, enum_column
-from app.db import Base
 
 
 class EvidenceRecord(Base, IdMixin, TimestampMixin):

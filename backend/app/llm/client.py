@@ -10,7 +10,7 @@ and resilient in production if the provider has an outage.
 import json
 import logging
 
-from openai import AsyncOpenAI, APIError, APITimeoutError
+from openai import APIError, APITimeoutError, AsyncOpenAI
 
 from app.config import get_settings
 

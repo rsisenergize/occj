@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import httpx
 
 from app.config import get_settings
-from app.db import ensure_aware, utcnow
+from app.db import utcnow
 from app.models.action import ActionRequest
 from app.models.enums import SourceType
 from app.tools.base import Connector, ConnectorError, ToolResult

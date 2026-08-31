@@ -21,7 +21,7 @@ from app.audit.service import record as record_audit
 from app.db import utcnow
 from app.engine.stage import advance_stage
 from app.models.action import ActionRequest, ToolExecution
-from app.models.enums import ActionType, ActionStatus, ActorType, JourneyStage, ToolExecutionStatus
+from app.models.enums import ActionStatus, ActionType, ActorType, JourneyStage, ToolExecutionStatus
 from app.reconciliation.reconciler import ingest_evidence, reconcile_case
 from app.tools import registry
 from app.tools.base import ToolResult
@@ -83,7 +83,7 @@ async def execute_action(session: AsyncSession, action: ActionRequest) -> Action
             result = await asyncio.wait_for(
                 connector.execute(action, context, attempt), timeout=PER_ATTEMPT_TIMEOUT_SECONDS
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             tool_exec.status = ToolExecutionStatus.TIMEOUT
             tool_exec.error_message = f"Timed out after {PER_ATTEMPT_TIMEOUT_SECONDS}s"
             tool_exec.finished_at = utcnow()

@@ -5,7 +5,7 @@ production deployment swaps this for a real IdP (OIDC/SAML) without
 touching anything downstream, since every consumer only ever sees a
 decoded {sub, role} claim.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from jose import JWTError, jwt
@@ -24,7 +24,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(*, user_id: str, role: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expiry_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expiry_minutes)
     payload = {"sub": user_id, "role": role, "exp": expire}
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
