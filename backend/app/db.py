@@ -1,9 +1,11 @@
 """Async SQLAlchemy engine/session, portable between SQLite (dev) and Postgres (prod)."""
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.config import get_settings
 
@@ -15,24 +17,39 @@ def connect_args_for(database_url: str) -> dict:
     alembic/env.py so migrations connect the same way the app does.
 
     Supabase's pooled connection (port 6543) runs PgBouncer/Supavisor in
-    transaction mode, which does not preserve prepared statements across the
-    pooled connections asyncpg reuses them on -- asyncpg's default statement
-    cache then hits "DuplicatePreparedStatementError". Disabling it is the
-    standard fix for asyncpg behind a transaction-mode pooler.
+    transaction mode: the backend Postgres connection asyncpg is handed can
+    be swapped out between statements, but asyncpg names prepared statements
+    with a plain per-connection counter ("__asyncpg_stmt_1__", ...) that
+    restarts at 1 for every new asyncpg connection -- so two pooled client
+    connections both preparing their first statement collide on the same
+    name on whichever backend connection they land on, raising
+    DuplicatePreparedStatementError. Per SQLAlchemy's own asyncpg+PgBouncer
+    guidance (docs: `asyncpg_prepared_statement_name`), the fix is two
+    parts: disable SQLAlchemy's own prepared-statement cache
+    (``prepared_statement_cache_size=0`` -- a DBAPI arg implemented by the
+    dialect itself, distinct from asyncpg's own like-named argument) *and*
+    give asyncpg a name generator that can't collide (uuid4-based, not the
+    default counter). Paired with poolclass=NullPool below, since the whole
+    point of the pooled Supabase URL is that PgBouncer does the pooling.
     """
     if database_url.startswith("sqlite"):
         return {"check_same_thread": False}
     if "+asyncpg" in database_url:
-        return {"statement_cache_size": 0}
+        return {
+            "prepared_statement_cache_size": 0,
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+        }
     return {}
 
 
 _connect_args = connect_args_for(settings.database_url)
+_poolclass = NullPool if "+asyncpg" in settings.database_url else None
 
 engine = create_async_engine(
     settings.database_url,
     echo=settings.sql_echo,
     connect_args=_connect_args,
+    **({"poolclass": _poolclass} if _poolclass else {}),
 )
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
