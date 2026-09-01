@@ -9,6 +9,9 @@ from app.api.routers import approvals, audit, auth, cases, demo, ingestion
 from app.auth.security import hash_password
 from app.config import get_settings
 from app.db import AsyncSessionLocal, init_db
+from app.ingest import debug_routes as ingest_debug_routes
+from app.ingest import webhooks as ingest_webhooks
+from app.ingest.subscriber import start_reconciliation_subscriber, streamer as ingest_streamer
 from app.models.auth import User
 from app.models.enums import UserRole
 
@@ -39,8 +42,15 @@ async def lifespan(_: FastAPI):
                     User(username=username, password_hash=hash_password("demo-pass"), role=role, display_name=display_name)
                 )
         await session.commit()
+    # New ingestion/reconciliation pipeline (app/ingest/): registers the
+    # Reconciliation Engine as the streamer's one subscriber. Must happen
+    # inside a running event loop, hence here rather than at import time --
+    # see EventStreamer.subscribe's docstring.
+    start_reconciliation_subscriber()
+
     logger.info("Startup complete (environment=%s)", settings.environment)
     yield
+    await ingest_streamer.shutdown()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -61,6 +71,8 @@ app.include_router(approvals.router)
 app.include_router(audit.router)
 app.include_router(ingestion.router)
 app.include_router(demo.router)
+app.include_router(ingest_webhooks.router)
+app.include_router(ingest_debug_routes.router)
 
 
 @app.get("/health")

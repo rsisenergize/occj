@@ -13,6 +13,7 @@ from app.models.enums import CaseTriggerType
 async def session() -> AsyncSession:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
+        import app.ingest.models  # noqa: F401
         import app.models  # noqa: F401
 
         await conn.run_sync(Base.metadata.create_all)
