@@ -10,7 +10,7 @@ from alembic import context
 # autogenerate compares it against the live schema.
 import app.models  # noqa: F401
 from app.config import get_settings
-from app.db import Base
+from app.db import Base, connect_args_for
 
 config = context.config
 
@@ -50,6 +50,7 @@ async def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args_for(get_settings().database_url),
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
