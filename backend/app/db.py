@@ -9,7 +9,25 @@ from app.config import get_settings
 
 settings = get_settings()
 
-_connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+
+def connect_args_for(database_url: str) -> dict:
+    """Driver-level connect_args for a given DATABASE_URL. Shared with
+    alembic/env.py so migrations connect the same way the app does.
+
+    Supabase's pooled connection (port 6543) runs PgBouncer/Supavisor in
+    transaction mode, which does not preserve prepared statements across the
+    pooled connections asyncpg reuses them on -- asyncpg's default statement
+    cache then hits "DuplicatePreparedStatementError". Disabling it is the
+    standard fix for asyncpg behind a transaction-mode pooler.
+    """
+    if database_url.startswith("sqlite"):
+        return {"check_same_thread": False}
+    if "+asyncpg" in database_url:
+        return {"statement_cache_size": 0}
+    return {}
+
+
+_connect_args = connect_args_for(settings.database_url)
 
 engine = create_async_engine(
     settings.database_url,
