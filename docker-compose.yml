@@ -27,7 +27,7 @@ services:
       # Set these to enable real integrations; unset = deterministic mock/
       # template fallbacks, per the design in backend/app/config.py.
       LLM_API_KEY: ${LLM_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-qwen/qwen3-32b}
+      LLM_MODEL: ${LLM_MODEL:-openai/gpt-oss-120b}
       FRESHDESK_DOMAIN: ${FRESHDESK_DOMAIN:-}
       FRESHDESK_API_KEY: ${FRESHDESK_API_KEY:-}
       FRESHSERVICE_DOMAIN: ${FRESHSERVICE_DOMAIN:-}
