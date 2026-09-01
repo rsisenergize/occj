@@ -83,7 +83,8 @@ async def init_db() -> None:
     Production deployments should use the Alembic migrations in
     backend/alembic/ instead of relying on create_all.
     """
-    import app.models  # noqa: F401  (ensure all models are registered on Base.metadata)
+    import app.ingest.models  # noqa: F401  (ensure all models are registered on Base.metadata)
+    import app.models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

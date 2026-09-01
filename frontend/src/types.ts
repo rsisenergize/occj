@@ -141,3 +141,86 @@ export interface CurrentUser {
   role: string;
   display_name: string;
 }
+
+// --- Ingestion pipeline v2 debug UI (app/ingest/debug_routes.py) ---
+
+export interface IngestEventOut {
+  id: string;
+  kind: "log_version" | "order_version";
+  version_no: number;
+  payload: Record<string, unknown>;
+  event_time: string;
+  received_time: string;
+  timezone: string;
+  provenance: string;
+  created_at: string;
+  status?: string; // order_version only
+  fact_type?: string; // log_version only
+  source_system?: string; // log_version only
+  log_id?: string; // log_version only
+  order_id?: string | null;
+}
+
+export interface IngestConflictOut {
+  id: string;
+  timeline_id: string;
+  fact_type: string;
+  resolution_status: "unresolved" | "resolved";
+  resolution_rule: string | null;
+  detected_at: string;
+  versions: IngestEventOut[];
+}
+
+export interface IngestOrderOut {
+  id: string;
+  order_ref: string;
+  versions: IngestEventOut[];
+}
+
+export interface IngestLogOut {
+  id: string;
+  fact_type: string;
+  source_system: string;
+  order_id: string | null;
+  versions: IngestEventOut[];
+}
+
+export interface IngestTimelineOut {
+  id: string;
+  status: string;
+  created_at: string;
+  orders: IngestOrderOut[];
+  logs: IngestLogOut[];
+  conflicts: {
+    id: string;
+    fact_type: string;
+    resolution_status: string;
+    resolution_rule: string | null;
+    detected_at: string;
+  }[];
+}
+
+export interface IngestTimelineExplorerOut {
+  customer: { id: string; external_customer_id: string; display_name: string };
+  timelines: IngestTimelineOut[];
+}
+
+export interface IngestSourceHealth {
+  last_seen: string | null;
+  events_1h: number;
+  events_24h: number;
+}
+
+export interface IngestHealthSummaryOut {
+  sources: Record<string, IngestSourceHealth>;
+  dead_letter_count: number;
+  outbox_pending_count: number;
+}
+
+export interface IngestDeadLetterOut {
+  id: string;
+  raw_event: Record<string, unknown>;
+  error_reason: string;
+  attempt_count: number;
+  failed_at: string;
+}

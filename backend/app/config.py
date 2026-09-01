@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     llm_model: str = "openai/gpt-oss-120b"
     llm_timeout_seconds: float = 20.0
 
+    # --- Ingestion pipeline v2 (app/ingest/): webhook signature verification.
+    # Shared across all 7 adapters (they're synthetic/mocked sources for now,
+    # not distinct real vendor credentials -- see README). Unset in local
+    # dev: signature checking is skipped, matching this codebase's existing
+    # graceful-degradation convention for other optional credentials.
+    ingest_webhook_secret: str | None = None
+
     # --- Freshdesk (contact-centre evidence source) ---
     freshdesk_domain: str | None = None  # "<subdomain>" of <subdomain>.freshdesk.com
     freshdesk_api_key: str | None = None

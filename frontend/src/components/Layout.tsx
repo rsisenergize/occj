@@ -14,6 +14,25 @@ export function Layout() {
           <NavLink to="/approvals" className={({ isActive }) => (isActive ? "active" : "")}>
             Approvals
           </NavLink>
+          {user?.role === "admin" && (
+            <>
+              <span className="small muted" style={{ margin: "0 4px" }}>
+                |
+              </span>
+              <NavLink to="/debug/events" className={({ isActive }) => (isActive ? "active" : "")}>
+                Live feed
+              </NavLink>
+              <NavLink to="/debug/timeline" className={({ isActive }) => (isActive ? "active" : "")}>
+                Timeline explorer
+              </NavLink>
+              <NavLink to="/debug/conflicts" className={({ isActive }) => (isActive ? "active" : "")}>
+                Conflicts
+              </NavLink>
+              <NavLink to="/debug/health" className={({ isActive }) => (isActive ? "active" : "")}>
+                Pipeline health
+              </NavLink>
+            </>
+          )}
         </nav>
         <div className="user">
           {user && (

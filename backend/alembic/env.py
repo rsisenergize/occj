@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 
 # Ensure every model module is imported so Base.metadata is complete before
-# autogenerate compares it against the live schema.
+# autogenerate compares it against the live schema. app.ingest.models must
+# be imported before app.models (see app/models/__init__.py's docstring on
+# why importing it from inside that package is circular).
+import app.ingest.models  # noqa: F401
 import app.models  # noqa: F401
 from app.config import get_settings
 from app.db import Base, connect_args_for
