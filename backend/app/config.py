@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # demoable before Groq credentials exist.
     llm_base_url: str = "https://api.groq.com/openai/v1"
     llm_api_key: str | None = None
-    llm_model: str = "qwen/qwen3-32b"
+    llm_model: str = "openai/gpt-oss-120b"
     llm_timeout_seconds: float = 20.0
 
     # --- Freshdesk (contact-centre evidence source) ---

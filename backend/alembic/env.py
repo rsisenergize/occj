@@ -19,8 +19,10 @@ if config.config_file_name is not None:
 
 # Driven by app settings (DATABASE_URL env var), not a hardcoded url in
 # alembic.ini -- same migrations run unmodified against local SQLite and
-# Supabase Postgres.
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# Supabase Postgres. configparser treats "%" as interpolation syntax (e.g.
+# in a percent-encoded password like "%40"), so it must be escaped to "%%"
+# going in -- config.get_main_option/get_section un-escape it on the way out.
+config.set_main_option("sqlalchemy.url", get_settings().database_url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
